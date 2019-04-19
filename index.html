@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Dungeon Crawler</title>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta/css/bootstrap.min.css">
+</head>
+<body>
+<h4 style="display:inline;" id="health"></h4>
+<h4 style="display:inline;" id="weapon"></h4>
+<h4 style="display:inline;" id="attack"></h4>
+<h4 style="display:inline;" id="level"></h4>
+<a onclick="toggleDark();" id="toggle" class="btn btn-primary">Toggle Darkness</a>
+<canvas style="display:block;" id="canvas" width="900", height="600"></canvas>
+</body>
+<script>
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext('2d');
+
+var charX = 320;
+var charY = 330;
+var moveSpeed = 10;
+var charSide = 10;
+var width_C = 900;
+var height_C = 600;
+var viewRadius  = 60;
+var viewRadius2  = 20;
+setTimeout(gameStart,50);
+var healthPoints = [];
+var weaponPoints = [];
+var enemyPoints = [];
+var character;
+var finalLevel = 4;
+var prevPos = {
+	"x":320,
+	"y":330
+}
+var dark = true;
+var blocksTotal = [];
+var transport;
+var weapons = [
+{"name":"Dagger","power":20},
+{"name":"Longsword","power":40},
+{"name":"Samurai Sword","power":50},
+{"name":"Thor's Hammer","power":60}
+];
+var rooms = [];
+var currentLevel = 0;
+function gameStart(){
+	character = new Character(charX,charY,100);
+	generateMap();
+	//updateGame();
+}
+function updateGame(){
+	ctx.beginPath();
+    ctx.rect(0,0,width_C,height_C);
+    ctx.fillStyle = "white";
+    ctx.fill();
+    for (var i = 0; i < rooms.length; i++){
+    	rooms[i].update();
+    }
+    //drawChar();
+    character.update();
+    for (var i = 0; i < healthPoints.length; i++){
+    	healthPoints[i].update();
+    }
+    for (var i = 0; i < weaponPoints.length; i++){
+    	weaponPoints[i].update();
+    }
+    for (var i = 0; i < enemyPoints.length; i++){
+    	enemyPoints[i].update();
+    }
+    checkIntersections();
+    transport.update();
+    if(dark){
+    drawDark();
+	}
+    updateScores();
+    setTimeout(updateGame,50);
+}
+function updateScores(){
+	var healthScore = document.getElementById('health');
+	var weaponScore = document.getElementById('weapon');
+	var attackScore = document.getElementById('attack');
+	var levelScore = document.getElementById('level');
+
+	healthScore.innerHTML = "Health: "+character.health;
+	weaponScore.innerHTML = "Weapon: "+character.weapon;
+	attackScore.innerHTML = "Attack: "+character.power;
+	levelScore.innerHTML = "Level: "+character.level;
+}
+function checkIntersections(){
+	for(var i = 0; i < healthPoints.length; i++){
+		if(character.isIntersecting(healthPoints[i])){
+			addHealth(i);
+		}
+	}
+	for(var i = 0; i < weaponPoints.length; i++){
+		if(character.isIntersecting(weaponPoints[i])){
+			changeWeapon(i);
+		}
+	}
+	if(character.isIntersecting(transport)){
+		goNextDungeon();
+	}
+	
+}
+function goNextDungeon(){
+	character.x = 320;
+	character.y = 330;
+	generateMap();
+}
+function generateMap(){
+	rooms = [];
+	blocksTotal = [];
+	healthPoints = [];
+	enemyPoints = [];
+	weaponPoints = [];
+	currentLevel++;
+	var room1 = new room(300,300,20,10);
+	room1.generateCoridoors();
+	room1.checkBounds();
+	rooms.push(room1);
+	var temprooms = room1.generateRooms();
+	for (var i = 0; i < temprooms.length; i++){
+		temprooms[i].generateCoridoors();
+		temprooms[i].checkBounds();
+		rooms.push(temprooms[i]);
+		var temprooms2 = temprooms[i].generateRooms();
+		for (var j = 0; j < temprooms2.length; j++){
+			temprooms2[j].generateCoridoors();
+			temprooms2[j].checkBounds();
+			rooms.push(temprooms2[j]);
+			var temprooms3 = temprooms2[j].generateRooms();
+			for (var a = 0; a < temprooms3.length; a++){
+				temprooms3[a].generateCoridoors();
+				temprooms3[a].checkBounds();
+				rooms.push(temprooms3[a]);
+				var temprooms4 = temprooms3[a].generateRooms();
+				for (var b = 0; b < temprooms4.length; b++){
+					//temprooms4[b].generateCoridoors();
+					temprooms4[b].checkBounds();
+					rooms.push(temprooms4[b]);
+				}
+			}
+		}
+	}
+
+	for(var i = 0; i < blocksTotal.length; i++){
+		if(Math.random()>0.99){
+			var healthToAdd = 25+(Math.floor(Math.random()*30));
+			healthPoints.push(new health(blocksTotal[i].x,blocksTotal[i].y,healthToAdd));
+		}
+		if(Math.random()>0.994){
+			var enemyPower = 5+(Math.floor(Math.random()*10));
+			var enemyHealth = 50+(Math.floor(Math.random()*80));
+			var enemyXp = 20+(Math.floor(Math.random()*30));
+			enemyPoints.push(new enemy(blocksTotal[i].x,blocksTotal[i].y,enemyPower,enemyHealth,enemyXp));
+		}
+		if(Math.random()>0.9995){
+			var indexToAdd = Math.floor(Math.random()*weapons.length);
+			weaponPoints.push(new weapon(blocksTotal[i].x,blocksTotal[i].y,weapons[indexToAdd].name,weapons[indexToAdd].power));
+		}
+	}
+	if(currentLevel==finalLevel){
+		enemyPoints.push(new boss(350,370));
+		transport = new nextDungeon(-200,-200);
+	}else{
+		var indexOfTransport = Math.floor(Math.random()*blocksTotal.length);
+		transport = new nextDungeon(blocksTotal[indexOfTransport].x,blocksTotal[indexOfTransport].y);
+	}
+	checkEnemies();
+	updateGame();
+}
+function checkEnemies(){
+	var canGo = true;
+	for(var i = 0; i < enemyPoints.length; i++){
+
+		if(currentLevel==finalLevel&&i==enemyPoints.length-1){
+			//alert('hi');
+			if(character.isFightingBoss(enemyPoints[enemyPoints.length-1])){
+				var enemyAlive = attackEnemy(enemyPoints.length-1);
+				if(enemyAlive){
+				return false;
+			}else{
+				alert('You win');
+			}
+			}
+		}else{
+			if(character.isIntersecting(enemyPoints[i])){
+			var enemyAlive = attackEnemy(i);
+			if(enemyAlive){
+				return false;
+			}
+		}
+		}
+	}
+	return true;
+}
+function attackEnemy(id){
+	var enemyAttacked = enemyPoints[id];
+	var hitPower = getHitPower(character.level,character.power);
+	enemyAttacked.health -= hitPower;
+	//alert(enemyAttacked.health);
+	if(enemyAttacked.health <= 0){
+		var xp = enemyAttacked.xp;
+		character.xp += xp;
+		enemyPoints.splice(id,1);
+		return false;
+	}else{
+		character.health -= getEnemyHitPower(enemyAttacked.power);
+		//alert(character.health);
+		return true;
+	}
+}
+function getEnemyHitPower(power){
+	return power+Math.floor(Math.random()*30);
+}
+function getHitPower(level,power){
+	return level+power+Math.floor(Math.random()*20);
+}
+function addHealth(id){
+var toAdd = healthPoints[id].points;
+character.health += toAdd;
+healthPoints.splice(id,1);
+}
+function changeWeapon(id){
+var name = weaponPoints[id].name;
+var power = weaponPoints[id].power;
+character.weapon = name;
+character.power = power;
+weaponPoints.splice(id,1);
+}
+function drawDark(){
+	//primarysides
+	ctx.beginPath();
+	ctx.rect(0,0,character.x-viewRadius,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(character.x+viewRadius+charSide,0,width_C,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(0,0,width_C,character.y-viewRadius);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(0,character.y+viewRadius+charSide,width_C,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+
+	//sides (zigzags)
+	ctx.rect(0,0,character.x-viewRadius+20,character.y-viewRadius+20);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(0,0,character.x-viewRadius+30,character.y-viewRadius+10);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(0,0,character.x-viewRadius+10,character.y-viewRadius+30);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(character.x+viewRadius+charSide-20,0,width_C,character.y-viewRadius+20);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(character.x+viewRadius+charSide-30,0,width_C,character.y-viewRadius+10);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(character.x+viewRadius+charSide-10,0,width_C,character.y-viewRadius+30);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(0,character.y+charSide+viewRadius-20,character.x-viewRadius+20,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(0,character.y+charSide+viewRadius-30,character.x-viewRadius+10,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(0,character.y+charSide+viewRadius-10,character.x-viewRadius+30,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.beginPath();
+	ctx.rect(character.x+charSide+viewRadius-20,character.y+viewRadius+charSide-20,width_C,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.rect(character.x+charSide+viewRadius-30,character.y+viewRadius+charSide-10,width_C,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+	ctx.rect(character.x+charSide+viewRadius-10,character.y+viewRadius+charSide-30,width_C,height_C);
+	ctx.fillStyle = 'black';
+	ctx.fill();
+}
+function canMove(){
+	for (var i = 0; i < blocksTotal.length; i++){
+		if(character.x==blocksTotal[i].x&&character.y==blocksTotal[i].y){
+			return true;
+		}
+	}
+	return false;
+}
+function drawAir(x,y){
+	ctx.beginPath();
+    ctx.rect(x,y,charSide,charSide);
+    ctx.fillStyle = '#666622';
+    ctx.fill();
+}
+function drawHealth(x,y){
+    ctx.beginPath();
+    ctx.rect(x,y,charSide,charSide);
+    ctx.fillStyle = 'green';
+    ctx.fill();
+}
+function drawBlock(x,y){
+	ctx.beginPath();
+    ctx.rect(x,y,charSide,charSide);
+    ctx.fillStyle = 'orange';
+    ctx.fill();
+}
+function drawEnemy(x,y){
+	ctx.beginPath();
+    ctx.rect(x,y,charSide,charSide);
+    ctx.fillStyle = 'red';
+    ctx.fill();
+}
+function drawWeapon(x,y){
+	ctx.beginPath();
+    ctx.rect(x,y,charSide,charSide);
+    ctx.fillStyle = 'yellow';
+    ctx.fill();
+}
+function drawChar(x,y){
+	//alert(x);
+    ctx.beginPath();
+    ctx.rect(x,y,charSide,charSide);
+    ctx.fillStyle = 'blue';
+    ctx.fill();
+   // alert('go');
+}
+function drawTransport(x,y){
+	ctx.beginPath();
+    ctx.rect(x,y,charSide,charSide);
+    ctx.fillStyle = 'purple';
+    ctx.fill();
+}
+function drawBoss(x,y){
+	ctx.beginPath();
+    ctx.rect(x,y,charSide*2,charSide*2);
+    ctx.fillStyle = 'red';
+    ctx.fill();
+}
+/*function generateMap(){
+	var map = [];
+	var xs = width_C/charSide;
+	var ys = height_C/charSide;
+	for (var i = 0; i < xs;i++){
+		map.push([]);
+		for (var j = 0; j < ys; j++){
+			map[i].push(new air(xs*charSide,ys*charSide));
+		}
+	}
+	return map;
+}*/
+var alerted = false;
+function killPlayer(){
+	if(!alerted){
+	alert('You Died!');
+	alerted = true;
+	}
+	ctx.beginPath();
+	ctx.rect(0,0,width_C,height_C);
+	ctx.fillStyle = 'red';
+	ctx.fill();
+}
+//Constructors
+function wall(x,y){
+	this.x = x;
+	this.y = y;
+}
+function air(x,y){
+	this.x = x;
+	this.y = y;
+
+	this.update = function(){
+		drawAir(this.x,this.y);
+	}
+}
+
+//Constructors
+function Character(x,y,health){
+	this.x = x;
+	this.y = y;
+	this.health = health;
+	this.weapon = 'Fist';
+	this.level = 1;
+	this.power= 10;
+	this.xp = 0;
+	this.leveling = [0,50,100,200];
+
+	this.update = function(){
+		//alert(this.x);
+		drawChar(this.x,this.y);
+		if(this.xp >= this.leveling[this.level]){
+			this.xp -= this.leveling[this.level];
+			this.level++;
+		}
+		if(this.health <= 0){
+			killPlayer();
+		}
+	}
+	this.isIntersecting = function(other){
+if (this.x==other.x&&this.y==other.y){
+return true;
+}else{return false;}
+}
+
+this.isFightingBoss = function(boss){
+	var points = [[boss.x,boss.y],[boss.x+charSide,boss.y],[boss.x,boss.y+charSide],[boss.x+charSide,boss.y+charSide]];
+for(var i = 0; i < points.length; i++){
+	if(character.x==points[i][0]&&character.y==points[i][1]){
+		return true;
+	}
+}
+return false;
+}
+}
+
+/*function nextDungeon(x,y){
+	this.x = x;
+	this.y = y;
+
+	this.update = function(){
+		drawTransport(this.x,this.y);
+	}
+}*/
+function nextDungeon(x,y){
+	this.x = x;
+	this.y = y;
+	this.update = function(){
+		drawTransport(this.x,this.y);
+	}
+}
+function boss(x,y){
+	this.x = x;
+	this.y = y;
+	this.power = 70+Math.floor(Math.random()*20);
+	this.health = 150+Math.floor(Math.random()*100);
+	this.xp = 200;
+
+	this.update = function(){
+		drawBoss(this.x,this.y);
+	}
+
+	this.attacked = function(hitPower){
+	this.health -= hitPower;	
+	}
+
+	this.isDead = function(){
+		if(this.health <= 0){
+			return true;
+		}else{
+			return false;
+		}
+	}
+}
+function enemy(x,y,power,health,xp){
+	this.x = x;
+	this.y = y;
+	this.power = power;
+	this.health = health;
+	this.xp = xp;
+
+	this.update = function(){
+		drawEnemy(this.x,this.y);
+	}
+
+	this.attacked = function(hitPower){
+	this.health -= hitPower;	
+	}
+
+	this.isDead = function(){
+		if(this.health <= 0){
+			return true;
+		}else{
+			return false;
+		}
+	}
+}
+function health(x,y,points){
+	this.x = x;
+	this.y = y;
+	this.points = points;
+	
+	this.update = function(){
+		drawHealth(this.x,this.y);
+	}
+}
+function weapon(x,y,name,power){
+	this.x = x;
+	this.y = y;
+	this.name = name;
+	this.power = power;
+
+	this.update = function(){
+		drawWeapon(this.x,this.y);
+	}
+}
+function roomBlock(x,y){
+	this.x = x;
+	this.y = y;
+	this.update = function(){
+		drawBlock(this.x,this.y);
+	}
+}
+function room(x,y,w,h){
+	this.x = x;
+	this.y = y;
+	this.w = w;
+	this.h = h;
+	this.blocks = [];
+	this.outofbounds = false;
+
+	for (var i = 0; i < w; i++){
+		for (var j = 0; j < h; j++){
+			var onX = charSide*i;
+			var onY = charSide*j;
+			this.blocks.push(new roomBlock(x+onX,y+onY));
+		}
+	}
+
+	this.checkBounds = function(){
+	for(var i = 0; i < this.blocks.length; i++){
+		if(this.blocks[i].x<0||this.blocks[i].y<0||this.blocks[i].x>(width_C - charSide)||this.blocks[i].y>(height_C - charSide)){
+			this.outofbounds = true;
+		}
+		for (var j = 0; j < blocksTotal.length; j++){
+			if(this.blocks[i].x==blocksTotal[j].x&&this.blocks[i].y==blocksTotal[j].y){
+				this.outofbounds = true;
+			}
+		}
+	}
+	if(!this.outofbounds){
+		for(var i = 0; i < this.blocks.length; i++){
+			blocksTotal.push(this.blocks[i]);
+		}
+	}
+	}
+
+	this.prob = [];//top,right,bottom,left (clockwise)
+
+	for (var i = 0; i < 4; i++){
+		if(Math.random()>0.2){
+			this.prob.push(true);
+		}else{
+			this.prob.push(false);
+		}
+	}
+	this.sides = [];//top,right,bottom,left (clockwise)
+	this.sides.push(Math.floor((this.x/charSide)+(Math.random()*(this.w-1))));//top
+	this.sides.push(Math.floor((this.y/charSide)+(Math.random()*(this.h-1))));//right
+	this.sides.push(Math.floor((this.x/charSide)+(Math.random()*(this.w-1))));//bottom
+	this.sides.push(Math.floor((this.y/charSide)+(Math.random()*(this.h-1))));//left
+
+	this.update = function(){
+		if(!this.outofbounds){
+		for (var i = 0; i < this.blocks.length; i++){
+			this.blocks[i].update();
+		}
+	}
+	}
+
+	this.generateCoridoors = function(){
+		if(!this.outofbounds){
+		if(this.prob[0]){
+			this.blocks.push(new roomBlock(this.sides[0]*charSide,this.y-charSide));
+		}
+		if(this.prob[1]){
+			this.blocks.push(new roomBlock(this.x+(this.w*charSide),this.sides[1]*charSide));
+		}
+		if(this.prob[2]){
+			this.blocks.push(new roomBlock(this.sides[2]*charSide,this.y+(this.h*charSide)));
+		}
+		if(this.prob[3]){
+			this.blocks.push(new roomBlock(this.x-charSide,this.sides[3]*charSide));
+		}
+	}
+	}
+	this.generateRooms = function(){
+		if(!this.outofbounds){
+		var newRooms = [];
+		if(this.prob[0]){
+			var randW = 5+(Math.floor(Math.random()*6));
+			var randH = 5+(Math.floor(Math.random()*6));
+			var randLeft = 1+(Math.floor(Math.random()*2));
+			var coordX = this.sides[0]*charSide-(randLeft*charSide);
+			var coordY = this.y-charSide-(randH*charSide);
+			newRooms.push(new room(coordX,coordY,randW,randH));
+		}
+		if(this.prob[1]){
+			var randW = 5+(Math.floor(Math.random()*6));
+			var randH = 5+(Math.floor(Math.random()*6));
+			var randUp = 1+(Math.floor(Math.random()*2));
+			var coordX = this.x+charSide+(this.w*charSide);
+			var coordY = this.sides[1]*charSide-(randUp*charSide);
+			newRooms.push(new room(coordX,coordY,randW,randH));
+		}
+		if(this.prob[2]){
+			var randW = 5+(Math.floor(Math.random()*6));
+			var randH = 5+(Math.floor(Math.random()*6));
+			var randLeft = 1+(Math.floor(Math.random()*2));
+			var coordX = this.sides[2]*charSide-(randLeft*charSide);
+			var coordY = this.y+(this.h*charSide)+charSide;
+			newRooms.push(new room(coordX,coordY,randW,randH));
+		}
+		if(this.prob[3]){
+			var randW = 5+(Math.floor(Math.random()*6));
+			var randH = 5+(Math.floor(Math.random()*6));
+			var randUp = 1+(Math.floor(Math.random()*2));
+			var coordX = this.x-charSide-(randW*charSide);
+			var coordY = this.sides[3]*charSide-(randUp*charSide);
+			newRooms.push(new room(coordX,coordY,randW,randH));
+		}
+		return newRooms;
+	}else{
+		var blank = [];
+		return blank;
+	}
+	}
+}
+//Handle key events
+document.onkeydown = function userInput(){
+switch(event.keyCode){
+case 37:
+//alert('go');
+character.x -= moveSpeed;
+//alert(character.x);
+break;
+case 38:
+character.y -= moveSpeed;
+break;
+case 39:
+character.x += moveSpeed;
+break;
+case 40:
+character.y += moveSpeed;
+break;
+}
+var Checked = checkEnemies();
+if(Checked){
+	if(canMove()){
+	prevPos.x = character.x;
+	prevPos.y = character.y;
+	}else{
+	character.x = prevPos.x;
+	character.y = prevPos.y;
+	}
+}else{
+	character.x = prevPos.x;
+	character.y = prevPos.y;
+}
+
+}
+
+function toggleDark(){
+	dark = !dark;
+}
+</script>
+<style>
+body{
+	background-color:#000000;
+}
+h4{
+	margin-left:10px;
+	margin-bottom:0px;
+	color:#ffffff;
+}
+#toggle{
+	float:right;
+	margin-top:20px;
+	margin-right:20px;
+}
+</style>
+</html>
